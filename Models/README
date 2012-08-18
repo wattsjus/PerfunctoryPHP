@@ -1,0 +1,15 @@
+A folder for models for the templates e.g.
+
+<?php
+$model->Title = "This is my title";
+?>
+
+the $model variable is what the templates read and in the templates you retrieve the values by %Title etc.  You can also create model functions in PHP 5.3+ you can use delegates such as:
+
+<?php
+$model->HelloWorld = function() {
+  return "Hello World";
+}
+?>
+
+and retrieve the function's value via %HelloWorld() you can also use functions with parameters and set the parameters with the models values etc.
