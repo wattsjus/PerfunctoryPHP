@@ -1,6 +1,15 @@
 <?php 
+session_start();
 require_once("config.php");
+require_once("Core/Data/mysqlDB.php");
+require_once("Core/Data/parseDB.php");
 require_once("Models/".basename($_SERVER["PHP_SELF"])); 
+if(isset($_GET["formSubmitted"])) {
+  SubmitForm($_GET["formName"]);
+} else if(isset($_POST["formSubmitted"])) {
+  SubmitForm($_POST["formName"]);
+}
+
 require_once("Core/qrcode/qrlib.php");
 
 global $is_wireless;
@@ -11,7 +20,7 @@ global $is_mobile_device;
 global $is_desktop;
 
 global $model;
-
+LoadModel($model);
 $is_wireless = false;
 $is_smarttv = false;
 $is_tablet = false;
@@ -68,7 +77,9 @@ function DetectTemplate($name) {
   global $is_tablet;
   global $is_phone;
   global $is_mobile_device;
-  
+  global $is_desktop;
+  global $model;
+
   $useTemplate = "$name.php";
   if (!$is_mobile_device) {
     if ($is_smarttv) {
@@ -83,6 +94,35 @@ function DetectTemplate($name) {
         $useTemplate = "$name.mobile.php";
     }
   }
+  if(isset($_GET["view"]) && $_GET["view"] == "desktop") {
+    $is_wireless = false;
+    $is_smarttv = false;
+    $is_tablet = false;
+    $is_phone = false;
+    $is_mobile_device = false;
+    $is_desktop = true;
+    $_SESSION["view"] = "desktop";
+  } else if(isset($_GET["view"]) && $_GET["view"] == "mobile") {
+    $is_wireless = false;
+    $is_smarttv = false;
+    $is_tablet = false;
+    $is_phone = true;
+    $is_mobile_device = false;
+    $is_desktop = false;
+    $_SESSION["view"] = "mobile";
+  }
+  if($is_wireless) { $deviceType = "Wireless"; }
+  if($is_smarttv) { $deviceType = "Smart TV"; }
+  if($is_tablet) { $deviceType = "Tablet"; }
+  if($is_phone) { $deviceType = "Phone"; }
+  if($is_mobile_device) { $deviceType = "Mobile"; }
+  if($is_desktop) { $deviceType = "Desktop"; }
+  $model->DeviceType = $deviceType;
+  if(file_exists("Models/$name.php")) {
+    require_once("Models/$name.php");
+  } else {
+    throw new Exception("Could not find a $name model.");
+  }
   if(file_exists("Templates/$useTemplate")) {
     require_once("Templates/$useTemplate");
   } else {
@@ -94,7 +134,6 @@ function DetectTemplate($name) {
   }
 }
 function SubmitForm($name) {
-  LoadSubTemplates();
   global $model;
   $function = "Form".$name."Submitted";
   $params = null;
@@ -140,7 +179,6 @@ function EndPage() {
   
   global $html;
   global $model;
-  
   $modModel = array();
   foreach($model as $key => $value) {
     $modModel[$key] = $value;
@@ -193,11 +231,6 @@ function EndPage() {
     }
     $html = str_replace($funcFinder->EntireFunction, file_get_contents("Templates/$funcFinder->Params.php"), $html);
   }
-  if(isset($_GET["formSubmitted"])) {
-    SubmitForm($_GET["formName"]);
-  } else if(isset($_POST["formSubmitted"])) {
-    SubmitForm($_POST["formName"]);
-  }
   
   while(strpos($html, "%Form") > 0) {
     $funcFinder->ProcessNext("Form", $html);
@@ -210,7 +243,7 @@ function EndPage() {
     }
     $innerForm = $funcFinder->InnerFunction;
     $formContent = $funcFinder->EntireFunction;
-    $html = str_replace("$formContent", "<form method='POST' action='".$page."'>$innerForm<input type='hidden' name='formSubmitted' value='true' /><input type='hidden' name='formName' value='$formName' /></form>", $html);
+    $html = str_replace("$formContent", "<form id='$formName' style='margin-bottom:0em' method='POST' action='".$page."' enctype='multipart/form-data'>$innerForm<input type='hidden' name='formSubmitted' value='true' /><input type='hidden' name='formName' value='$formName' /></form>", $html);
   }
   while(strpos($html, "%ForEach") > 0) {
     $funcFinder->ProcessNext("ForEach", $html);
@@ -263,6 +296,25 @@ function EndPage() {
         }
         $html = str_replace($funcFinder->EntireFunction, $results, $html); 
       }
+    }
+  }
+  while(strpos($html, "%MobileLink") > 0) {
+    $funcFinder->ProcessNext("MobileLink", $html, true);
+    if(isset($_SESSION["view"]) && $_SESSION["view"] == "desktop") {
+      $opDevice = "mobile device";
+    } else {
+      $opDevice = "desktop";
+    }
+    $linkText = "Click here to view this site as a ".$opDevice;
+    if(isset($funcFinder->Params) && trim($funcFinder->Params) != '') {
+      $linkText = $funcFinder->Params;
+    }
+    if(isset($_SESSION["view"]) && $_SESSION["view"] == "desktop") {
+      $html = str_replace($funcFinder->EntireFunction, "<a href='".$_SERVER["PHP_SELF"]."?view=mobile'>$linkText</a>", $html);
+    } else if(!$is_desktop) {
+      $html = str_replace($funcFinder->EntireFunction, "<a href='".$_SERVER["PHP_SELF"]."?view=desktop'>$linkText</a>", $html);
+    } else {
+      $html = str_replace($funcFinder->EntireFunction, "", $html);
     }
   }
   echo $html;
