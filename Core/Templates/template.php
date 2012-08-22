@@ -20,7 +20,11 @@ global $is_mobile_device;
 global $is_desktop;
 
 global $model;
-LoadModel($model);
+global $modelLoads;
+$modelLoads = array();
+if(isset($model->LoadModel)) {
+$modelLoads[] = $model->LoadModel;
+}
 $is_wireless = false;
 $is_smarttv = false;
 $is_tablet = false;
@@ -220,18 +224,23 @@ function EndPage() {
     }
     $html = str_replace($funcFinder->EntireFunction, $display ? "" : $funcFinder->InnerFunction, $html);
   }
-  
+  global $modelLoads;
   while(strpos($html, "%SubTemplate") > 0) {
     $funcFinder->ProcessNext("SubTemplate", $html, true);
     $funcFinder->Params = trim($funcFinder->Params);
     if(file_exists("Models/$funcFinder->Params.php")) {
       require_once("Models/$funcFinder->Params.php");
+      if(isset($model->LoadModel)) {
+      $modelLoads[] = $model->LoadModel;
+      }
     } else {
       throw new Exception("Model not found for subtemplate $funcFinder->Params.");
     }
     $html = str_replace($funcFinder->EntireFunction, file_get_contents("Templates/$funcFinder->Params.php"), $html);
   }
-  
+  foreach($modelLoads as $value) {
+    $value($model);
+  }
   while(strpos($html, "%Form") > 0) {
     $funcFinder->ProcessNext("Form", $html);
     $formName = $funcFinder->Params;
