@@ -1,17 +1,13 @@
 <?php 
-session_start();
-require_once("config.php");
-require_once("Core/Data/mysqlDB.php");
-require_once("Core/Data/parseDB.php");
-require_once("Models/".basename($_SERVER["PHP_SELF"])); 
-if(isset($_GET["formSubmitted"])) {
-  SubmitForm($_GET["formName"]);
-} else if(isset($_POST["formSubmitted"])) {
-  SubmitForm($_POST["formName"]);
-}
-
-require_once("Core/qrcode/qrlib.php");
-
+require_once("../config.php");
+require_once("Data/mysqlDB.php");
+require_once("Data/parseDB.php");
+require_once("../Models/".$page); 
+require_once("qrcode/qrlib.php");
+/* on back burner until a better geo location service is available.
+require_once('GeoLocation/GeoLocation.class.php');
+$geo = new GeoLocation($_SERVER['REMOTE_ADDR']);
+*/
 global $is_wireless;
 global $is_smarttv;
 global $is_tablet;
@@ -20,6 +16,12 @@ global $is_mobile_device;
 global $is_desktop;
 
 global $model;
+/*
+$model->ClientCity = $geo->city;
+$model->ClientCountry = $geo->country;
+$model->ClientLongitude = $geo->longitude;
+$model->ClientLatitude = $geo->latitude;
+*/
 global $modelLoads;
 $modelLoads = array();
 if(isset($model->LoadModel)) {
@@ -35,7 +37,7 @@ $is_desktop = false;
 DetectDevice();
 
 function DetectDevice() {
-  require_once('Core/WURFL/wurfl_config_standard.php');
+  require_once('WURFL/wurfl_config_standard.php');
   $requestingDevice = $wurflManager->getDeviceForHttpRequest($_SERVER);
   
   global $is_wireless;
@@ -83,19 +85,18 @@ function DetectTemplate($name) {
   global $is_mobile_device;
   global $is_desktop;
   global $model;
-
-  $useTemplate = "$name.php";
+  $useTemplate = "$name.html";
   if (!$is_mobile_device) {
     if ($is_smarttv) {
-        $useTemplate = "$name.smarttv.php";
+        $useTemplate = "$name.smarttv.html";
     }
   } else {
     if ($is_tablet) {
-        $useTemplate = "$name.tablet.php";
+        $useTemplate = "$name.tablet.html";
     } else if ($is_phone) {
-        $useTemplate = "$name.phone.php";
+        $useTemplate = "$name.phone.html";
     } else {
-        $useTemplate = "$name.mobile.php";
+        $useTemplate = "$name.mobile.html";
     }
   }
   if(isset($_GET["view"]) && $_GET["view"] == "desktop") {
@@ -122,20 +123,36 @@ function DetectTemplate($name) {
   if($is_mobile_device) { $deviceType = "Mobile"; }
   if($is_desktop) { $deviceType = "Desktop"; }
   $model->DeviceType = $deviceType;
-  if(file_exists("Models/$name.php")) {
-    require_once("Models/$name.php");
+  if(file_exists("../Templates/$useTemplate")) {
+    require_once("../Templates/$useTemplate");
+    $name = $useTemplate;
   } else {
-    throw new Exception("Could not find a $name model.");
-  }
-  if(file_exists("Templates/$useTemplate")) {
-    require_once("Templates/$useTemplate");
-  } else {
-    if(file_exists("Templates/$name.php")) {
-      require_once("Templates/$name.php");
+    if(file_exists("../Templates/$name.html")) {
+      require_once("../Templates/$name.html");
     } else {
       throw new Exception("Could not find a $name template.");
     }
   }
+  $modelName = $name;
+  $regex = "/<!--(.*?)-->/ims";
+  $view = preg_match_all($regex, file_get_contents("../Templates/".str_replace(".php",".html",$modelName)), $matches);
+foreach($matches as $key => $value) {
+if(is_array($value)) {
+  if(count($value) > 0) {
+  $parts = explode(":",trim($value[0]));
+  if(trim($parts[0]) == "model") {
+    $modelName = trim($parts[1]);
+    break;
+  }
+  }
+}
+}
+  if(file_exists("../Models/".str_replace(".html",".php",$modelName))) {
+    require_once("../Models/".str_replace(".html",".php",$modelName));
+  } else {
+    throw new Exception("Could not find a ".str_replace(".html","",$modelName)." model.");
+  }
+  EndTemplate();
 }
 function SubmitForm($name) {
   global $model;
@@ -183,6 +200,7 @@ function EndPage() {
   
   global $html;
   global $model;
+  global $page;
   $modModel = array();
   foreach($model as $key => $value) {
     $modModel[$key] = $value;
@@ -228,31 +246,51 @@ function EndPage() {
   while(strpos($html, "%SubTemplate") > 0) {
     $funcFinder->ProcessNext("SubTemplate", $html, true);
     $funcFinder->Params = trim($funcFinder->Params);
-    if(file_exists("Models/$funcFinder->Params.php")) {
-      require_once("Models/$funcFinder->Params.php");
+    $modelName = $funcFinder->Params;
+      $regex = "/<!--(.*?)-->/ims";
+  $view = preg_match_all($regex, file_get_contents("../Templates/$funcFinder->Params.html"), $matches);
+foreach($matches as $key => $value) {
+if(is_array($value)) {
+  if(count($value) > 0) {
+  $parts = explode(":",trim($value[0]));
+  if(trim($parts[0]) == "model") {
+    $modelName = trim($parts[1]);
+    break;
+  }
+  }
+}
+}
+    if(file_exists("../Models/$modelName.php")) {
+      require_once("../Models/$modelName.php");
       if(isset($model->LoadModel)) {
       $modelLoads[] = $model->LoadModel;
       }
     } else {
       throw new Exception("Model not found for subtemplate $funcFinder->Params.");
     }
-    $html = str_replace($funcFinder->EntireFunction, file_get_contents("Templates/$funcFinder->Params.php"), $html);
+    $html = str_replace($funcFinder->EntireFunction, file_get_contents("../Templates/$funcFinder->Params.html"), $html);
   }
+session_start();
+if(isset($_GET["formSubmitted"])) {
+  SubmitForm($_GET["formName"]);
+} else if(isset($_POST["formSubmitted"])) {
+  SubmitForm($_POST["formName"]);
+}
   foreach($modelLoads as $value) {
     $value($model);
   }
   while(strpos($html, "%Form") > 0) {
     $funcFinder->ProcessNext("Form", $html);
     $formName = $funcFinder->Params;
-    $page = $_SERVER["PHP_SELF"];
+    $page2= $page;
     if(count(explode(":", $formName)) > 1) {
       $parts = explode(":", $formName);
       $formName = $parts[0];
-      $page = $parts[1];
+      $page2 = $parts[1];
     }
     $innerForm = $funcFinder->InnerFunction;
     $formContent = $funcFinder->EntireFunction;
-    $html = str_replace("$formContent", "<form id='$formName' style='margin-bottom:0em' method='POST' action='".$page."' enctype='multipart/form-data'>$innerForm<input type='hidden' name='formSubmitted' value='true' /><input type='hidden' name='formName' value='$formName' /></form>", $html);
+    $html = str_replace("$formContent", "<form id='$formName' style='margin-bottom:0em' method='POST' action='".$page2."' enctype='multipart/form-data'>$innerForm<input type='hidden' name='formSubmitted' value='true' /><input type='hidden' name='formName' value='$formName' /></form>", $html);
   }
   while(strpos($html, "%ForEach") > 0) {
     $funcFinder->ProcessNext("ForEach", $html);
@@ -331,6 +369,7 @@ function EndPage() {
 function Recurse($toReplace, $replacement, $text, $forLoop) {
   if(is_callable($replacement)) {
   } else if(is_string($toReplace) && (!is_object($replacement)) && (!is_array($replacement))) {
+    if(is_bool($replacement)) $replacement = $replacement ? 1 : 0;
     $text = trim(str_replace($toReplace, $replacement, $text));
   } else if(is_array($replacement) && $forLoop) {
     $temp = "";

@@ -15,7 +15,9 @@ class MySqlDataAccess {
         while($row = mysql_fetch_assoc($result)) {
           $temp = new $class();
           foreach($temp as $key => $value) {
-            $temp->$key = $row[$key];
+            if($key != "PrimaryKey") {
+              $temp->$key = $row[$key];
+            }
           }
           $results[] = $temp;
         }
@@ -30,6 +32,11 @@ class MySqlDataAccess {
         }
         return $temp;
       }
+    }
+    public function Delete() {
+      $PrimaryKey = $this->PrimaryKey . "";
+      $PrimaryValue = $this->$PrimaryKey;
+      mysql_query("DELETE FROM `".get_class($this)."` WHERE `$PrimaryKey` = $PrimaryValue") or die(mysql_error());
     }
     public function Save() {
       global $conn;
@@ -48,6 +55,8 @@ class MySqlDataAccess {
             $values .= "'".getDateTime($value)."',";
           } else if(is_string($value)) {
             $values .= "'".mysql_real_escape_string($value)."',";
+          } else if($value == null) {
+            $values .= "null,";
           } else {
             $values .= "$value,";
           }
@@ -67,6 +76,8 @@ class MySqlDataAccess {
             $updateVals .= "`$key` = '".getDateTime($value)."',";
           } else if(is_string($value)) {
             $updateVals .= "`$key` = '".mysql_real_escape_string($value)."',";
+          } else if($value == null) {
+            $updateVals .= "`$key` = null,";
           } else {
             $updateVals .= "`$key` = $value,";
           }
